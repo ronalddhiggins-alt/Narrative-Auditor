@@ -1,8 +1,7 @@
 import axios from 'axios';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`;
 
 const SYSTEM_PROMPT = `
 ROLE: You are the "Antigravity Narrative Auditor." Your goal is to deconstruct news stories into cold, hard data to help humans rise above political "gravity" (bias).
@@ -70,10 +69,14 @@ export default async function handler(req, res) {
             .map(s => `Title: ${s.title}\nSource: ${s.url}\nContent: ${s.content}`)
             .join('\n\n');
 
-        // 2. Gemini Analysis
+        // 2. Gemini Analysis via stable v1 REST API
         const prompt = `${SYSTEM_PROMPT}\n\nUSER QUERY: "${query}"\n\nSEARCH CONTEXT:\n${searchContext}`;
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
+        const geminiResponse = await axios.post(
+            `${GEMINI_API_URL}?key=${process.env.GEMINI_API_KEY}`,
+            { contents: [{ role: 'user', parts: [{ text: prompt }] }] },
+            { headers: { 'Content-Type': 'application/json' } }
+        );
+        const responseText = geminiResponse.data.candidates[0].content.parts[0].text;
         const jsonResponse = extractJSON(responseText);
         jsonResponse.metadata.total_sources = sources.length;
 
