@@ -29,20 +29,9 @@ export const AuditService = {
             const data = await response.json();
             return data;
         } catch (error) {
-            console.warn("[AuditEngine] Backend unreachable or failed. Falling back to Simulation Mode.", error);
-
-            return new Promise((resolve) => {
-                setTimeout(() => {
-                    resolve({
-                        ...MOCK_ANALYSIS_RESULT,
-                        metadata: {
-                            ...MOCK_ANALYSIS_RESULT.metadata,
-                            query: query,
-                            notes: "Simulation Mode (Backend Offline - Check Server Logs)"
-                        }
-                    });
-                }, 2000);
-            });
+            console.error("[AuditEngine] Backend failed:", error);
+            // Re-throw so App.jsx shows the real error message
+            throw new Error("The audit server is unreachable. Please check your connection and try again.");
         }
     },
 
