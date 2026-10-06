@@ -17,7 +17,7 @@ else console.log(`[Init] Loaded GEMINI_API_KEY starting with: ${process.env.GEMI
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'MISSING_KEY');
 // Using the available high-performance flash model
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // The "Antigravity Narrative Auditor" System Prompt
 const SYSTEM_PROMPT = `
