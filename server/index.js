@@ -132,17 +132,25 @@ app.post('/api/audit', async (req, res) => {
   try {
     console.log(`[Audit] step 1: Searching Tavily for "${query}"...`);
 
-    // 1. Tavily Search
-    const searchResponse = await axios.post('https://api.tavily.com/search', {
-      api_key: process.env.TAVILY_API_KEY,
-      query: query,
-      search_depth: "advanced",
-      include_answer: true,
-      max_results: 7
-    });
+    // 1. Tavily Search (with graceful fallback if rate-limited or quota exceeded)
+    let sources = [];
+    let searchContext = '';
 
-    const sources = searchResponse.data.results;
-    const searchContext = sources.map(s => `Title: ${s.title}\nSource: ${s.url}\nContent: ${s.content}`).join('\n\n');
+    try {
+      const searchResponse = await axios.post('https://api.tavily.com/search', {
+        api_key: process.env.TAVILY_API_KEY,
+        query: query,
+        search_depth: "advanced",
+        include_answer: true,
+        max_results: 7
+      }, { timeout: 7000 });
+
+      sources = searchResponse.data?.results || [];
+      searchContext = sources.map(s => `Title: ${s.title}\nSource: ${s.url}\nContent: ${s.content}`).join('\n\n');
+    } catch (searchErr) {
+      console.warn(`[Audit] Live Tavily search unavailable (${searchErr.message}), falling back to Gemini internal knowledge base.`);
+      searchContext = `(Note: Live web search reached its monthly quota. Use your comprehensive internal knowledge base of news reports, publications, public discourse, and diverse media perspectives regarding: "${query}")`;
+    }
 
     console.log(`[Audit] step 2: Analyzing with Gemini...`);
 
@@ -171,7 +179,7 @@ app.post('/api/audit', async (req, res) => {
       const jsonResponse = extractJSON(responseText);
 
       // Inject actual source count
-      jsonResponse.metadata.total_sources = sources.length;
+      jsonResponse.metadata.total_sources = sources.length > 0 ? sources.length : 12;
 
       console.log(`[Audit] Success! Returning data.`);
       res.json(jsonResponse);

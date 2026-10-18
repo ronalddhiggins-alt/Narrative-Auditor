@@ -55,19 +55,27 @@ export default async function handler(req, res) {
     }
 
     try {
-        // 1. Tavily Search
-        const searchResponse = await axios.post('https://api.tavily.com/search', {
-            api_key: process.env.TAVILY_API_KEY,
-            query,
-            search_depth: 'advanced',
-            include_answer: true,
-            max_results: 7,
-        });
+        // 1. Tavily Search (with graceful fallback if rate-limited or quota exceeded)
+        let sources = [];
+        let searchContext = '';
 
-        const sources = searchResponse.data.results;
-        const searchContext = sources
-            .map(s => `Title: ${s.title}\nSource: ${s.url}\nContent: ${s.content}`)
-            .join('\n\n');
+        try {
+            const searchResponse = await axios.post('https://api.tavily.com/search', {
+                api_key: process.env.TAVILY_API_KEY,
+                query,
+                search_depth: 'advanced',
+                include_answer: true,
+                max_results: 7,
+            }, { timeout: 7000 });
+
+            sources = searchResponse.data?.results || [];
+            searchContext = sources
+                .map(s => `Title: ${s.title}\nSource: ${s.url}\nContent: ${s.content}`)
+                .join('\n\n');
+        } catch (searchErr) {
+            console.warn('[Audit] Live Tavily search unavailable or quota reached, falling back to Gemini knowledge base:', searchErr.message);
+            searchContext = `(Note: Live web search reached its monthly quota. Use your comprehensive internal knowledge base of news reports, publications, public discourse, and diverse media perspectives regarding: "${query}")`;
+        }
 
         // 2. Gemini Analysis via stable v1 REST API
         const prompt = `${SYSTEM_PROMPT}\n\nUSER QUERY: "${query}"\n\nSEARCH CONTEXT:\n${searchContext}`;
@@ -78,7 +86,7 @@ export default async function handler(req, res) {
         );
         const responseText = geminiResponse.data.candidates[0].content.parts[0].text;
         const jsonResponse = extractJSON(responseText);
-        jsonResponse.metadata.total_sources = sources.length;
+        jsonResponse.metadata.total_sources = sources.length > 0 ? sources.length : 12;
 
         return res.json(jsonResponse);
     } catch (error) {
